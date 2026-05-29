@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "arg-kiss"
+version = "0.1.0"
+description = "arg-kiss — Keep It Stupidly Simple CLI builder on top of argparse"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+authors = [
+    {name = "Fkernel653"}
+]
+keywords = ["cli", "argparse", "command-line", "framework", "lightweight"]
+classifiers = [
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: User Interfaces",
+    "Topic :: Terminals",
+    "Topic :: Utilities",
+]
+
+[project.optional-dependencies]
+dev = ["ruff"]
+
+[project.urls]
+Homepage = "https://github.com/Fkernel653/arg-kiss"
+Repository = "https://github.com/Fkernel653/arg-kiss.git"
+Documentation = "https://github.com/Fkernel653/arg-kiss#readme"
+
+[tool.hatch.build.targets.wheel]
+packages = ["arg_kiss*"]
