@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arg-kiss"
-version = "0.1.0"
+version = "0.1.1"
 description = "arg-kiss — Keep It Stupidly Simple CLI builder on top of argparse"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -37,4 +37,4 @@ Repository = "https://github.com/Fkernel653/arg-kiss.git"
 Documentation = "https://github.com/Fkernel653/arg-kiss#readme"
 
 [tool.hatch.build.targets.wheel]
-packages = ["arg_kiss*"]
+packages = ["arg_kiss"]
