@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import asyncio
 import inspect
 import sys
 from typing import Any, Callable, Dict, List
@@ -165,6 +164,8 @@ class CLI:
             }
 
             if command_info["is_async"]:
+                import asyncio
+
                 result = asyncio.run(command_info["func"](**func_kwargs))
             else:
                 result = command_info["func"](**func_kwargs)
