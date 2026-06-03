@@ -171,6 +171,7 @@ class CLI:
                 result = command_info["func"](**func_kwargs)
 
             if result is not None:
-                print(str(result))
+                sys.stdout.write(str(result))
+                sys.stdout.flush()
         except SystemExit:
             raise
