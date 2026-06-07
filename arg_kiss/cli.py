@@ -172,6 +172,5 @@ class CLI:
 
             if result is not None:
                 sys.stdout.write(str(result) + "\n")
-                sys.stdout.flush()
         except SystemExit:
             raise
