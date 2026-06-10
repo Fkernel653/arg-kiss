@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any
+from typing import Any, get_args, get_origin
 
 
 def get_type_from_annotation(annotation, default: Any = None) -> type:
@@ -17,17 +17,13 @@ def get_type_from_annotation(annotation, default: Any = None) -> type:
     if isinstance(annotation, type):
         return annotation
 
-    origin = getattr(annotation, "__origin__", None)
+    origin = get_origin(annotation)
     if origin is not None:
-        import types
-        import typing
-
-        if origin is typing.Union or origin is types.UnionType:
-            args = getattr(annotation, "__args__", ())
-            none_type = type(None)
-            non_none = [a for a in args if a is not none_type]
-            if non_none:
-                return non_none[0] if isinstance(non_none[0], type) else str
+        args = get_args(annotation)
+        none_type = type(None)
+        non_none = [a for a in args if a is not none_type]
+        if non_none:
+            return non_none[0] if isinstance(non_none[0], type) else str
 
     return str
 
@@ -50,15 +46,11 @@ def is_bool_type(param: inspect.Parameter) -> bool:
     if annotation is bool:
         return True
 
-    origin = getattr(annotation, "__origin__", None)
+    origin = get_origin(annotation)
     if origin is not None:
-        import types
-        import typing
-
-        if origin is typing.Union or origin is types.UnionType:
-            args = getattr(annotation, "__args__", ())
-            none_type = type(None)
-            non_none = [a for a in args if a is not none_type]
-            return len(non_none) == 1 and non_none[0] is bool
+        args = get_args(annotation)
+        none_type = type(None)
+        non_none = [a for a in args if a is not none_type]
+        return len(non_none) == 1 and non_none[0] is bool
 
     return False
