@@ -7,9 +7,6 @@
 
 Write type-annotated Python functions, get a CLI with argparse's native `--help` — no magic, no bloat.
 
-> **arg-kiss** is a fork of [**cliss**](https://github.com/Fkernel653/cliss) with one key difference: **no custom `--help`**.  
-> It uses argparse's standard help output instead of a custom formatter. If you want coloured help, `Argument` objects, and more features — use [cliss](https://github.com/Fkernel653/cliss).
-
 ## ✨ Features
 
 - **Zero Dependencies** — Pure stdlib: `argparse`, `asyncio`, `inspect`
@@ -77,9 +74,9 @@ CLI(name="myapp", description="Description")
 ```
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `name` | `str` | `None` | `None` | Program name |
-| `description` | `str` | `None` | `None` | Program description |
-| `version` | `str` | `None` | `None` | Adds `--version` flag |
+| `name` | `str` | `None` | Program name |
+| `description` | `str` | `None` | Program description |
+| `version` | `str` | `None` | Adds `--version` flag |
 
 ### Type → CLI Mapping
 | Function Signature | CLI Argument |
@@ -205,22 +202,6 @@ async def fetch(url: str, retries: int = 3):
 
 ## ❓ FAQ
 
-### arg-kiss vs cliss?
-**arg-kiss** is a fork of [cliss](https://github.com/Fkernel653/cliss) that removes the custom `--help` formatter. Use arg-kiss if you want:
-
-- Standard argparse `--help` output
-- Zero dependencies beyond stdlib
-- Simple, predictable behaviour
-
-Use **cliss** if you want:
-- Coloured terminal output
-- `Argument` descriptor objects
-- Custom error messages
-- More features overall
-
-### Why fork instead of a flag?
-The custom help system in cliss is deeply integrated (custom formatter, colour library, error handling). A fork keeps arg-kiss clean and minimal while letting cliss grow independently.
-
 ### Bool flags?
 Automatic `--name`/`--no-name` mutually exclusive group with `store_true`/`store_false`.
 
@@ -235,5 +216,4 @@ MIT — see [LICENSE](LICENSE) file.
 
 **Author:** [Fkernel653](https://github.com/Fkernel653)  
 **Repository:** [github.com/Fkernel653/arg-kiss](https://github.com/Fkernel653/arg-kiss)  
-**PyPI:** [pypi.org/project/arg-kiss](https://pypi.org/project/arg-kiss/)  
-**Based on:** [cliss](https://github.com/Fkernel653/cliss) — a richer CLI framework with coloured help
+**PyPI:** [pypi.org/project/arg-kiss](https://pypi.org/project/arg-kiss/)
