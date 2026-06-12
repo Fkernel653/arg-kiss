@@ -19,13 +19,17 @@ class CLI:
         name: str | None = None,
         description: str | None = None,
         version: str | None = None,
+        colour: bool = True,
     ):
         self.name = name
         self.description = description
         self.version = version
+        self.colour = colour
         self._commands: Dict[str, dict] = {}
+
         self.parser = argparse.ArgumentParser(prog=name, description=description)
         self.subparsers = self.parser.add_subparsers(dest="_command", title="Commands")
+
         if version:
             self.parser.add_argument("--version", action="version", version=version)
 
@@ -45,6 +49,7 @@ class CLI:
         sub_cli.name = name
         sub_cli.description = description
         sub_cli.version = None
+        sub_cli.colour = self.colour
         sub_cli._commands = self._commands
         sub_cli.parser = group_parser
         sub_cli.subparsers = group_sub
@@ -63,12 +68,14 @@ class CLI:
             cmd_name = name or func.__name__.replace("_", "-")
             cmd_description = description or (func.__doc__ or "").strip()
             is_async = inspect.iscoroutinefunction(func)
+
             parser = self.subparsers.add_parser(
                 cmd_name,
                 help=cmd_description.split("\n")[0] if cmd_description else None,
                 description=cmd_description,
                 **parser_kwargs,
             )
+
             explicit_dests = set()
             if arguments:
                 for arg in arguments:
@@ -78,10 +85,12 @@ class CLI:
                         if k != "flags" and v is not None
                     }
                     explicit_dests.add(parser.add_argument(*arg.flags, **kw).dest)
+
             for param_name, param in inspect.signature(func).parameters.items():
                 if param_name in explicit_dests:
                     continue
                 has_default = param.default is not inspect.Parameter.empty
+
                 if not has_default:
                     parser.add_argument(
                         param_name,
@@ -98,11 +107,13 @@ class CLI:
                         default=param.default,
                         help=f"{param_name} (default: {param.default})",
                     )
+
             full_name = (
                 f"{self.name}:{cmd_name}"
                 if self.name and self.name != self.parser.prog
                 else cmd_name
             )
+
             self._commands[full_name] = {
                 "func": func,
                 "parser": parser,
@@ -140,37 +151,32 @@ class CLI:
         """Parse command-line arguments and execute the appropriate command."""
         args = sys.argv[1:] if args is None else args
 
-        try:
-            namespace = self.parser.parse_args(args)
-            namespace_dict = vars(namespace)
+        namespace = self.parser.parse_args(args)
+        namespace_dict = vars(namespace)
 
-            if namespace._command is None:
-                self.parser.print_help()
-                return
+        if namespace._command is None:
+            self.parser.print_help()
+            return
 
-            command_parts = [namespace._command]
-            command_parts.extend(
-                v for k, v in namespace_dict.items() if k.startswith("_group_") and v
-            )
-            full_command = ":".join(command_parts)
-            command_info = self._commands.get(full_command)
+        command_parts = [namespace._command]
+        command_parts.extend(
+            v for k, v in namespace_dict.items() if k.startswith("_group_") and v
+        )
+        full_command = ":".join(command_parts)
+        command_info = self._commands.get(full_command)
 
-            if command_info is None:
-                self.parser.print_help()
-                return
+        if command_info is None:
+            self.parser.print_help()
+            return
 
-            func_kwargs = {
-                k: v for k, v in namespace_dict.items() if not k.startswith("_")
-            }
+        func_kwargs = {k: v for k, v in namespace_dict.items() if not k.startswith("_")}
 
-            if command_info["is_async"]:
-                import asyncio
+        if command_info["is_async"]:
+            import asyncio
 
-                result = asyncio.run(command_info["func"](**func_kwargs))
-            else:
-                result = command_info["func"](**func_kwargs)
+            result = asyncio.run(command_info["func"](**func_kwargs))
+        else:
+            result = command_info["func"](**func_kwargs)
 
-            if result is not None:
-                sys.stdout.write(str(result) + "\n")
-        except SystemExit:
-            raise
+        if result is not None:
+            sys.stdout.write(result + "\n")

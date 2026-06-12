@@ -15,6 +15,7 @@ Write type-annotated Python functions, get a CLI with argparse's native `--help`
 - **Bool Flags** — Automatic `--name`/`--no-name` mutually exclusive group
 - **Command Groups** — Nested subcommands via `cli.group()`
 - **Standard --help** — Clean argparse output, nothing custom
+- **Colour Output** — Optional coloured error messages and help text
 
 ## 🚀 Quick Start
 
@@ -27,7 +28,7 @@ pip install arg-kiss
 ```python
 from arg_kiss import CLI
 
-cli = CLI(name="todo", description="Task manager")
+cli = CLI(name="todo", description="Task manager", colour=True)
 
 @cli.command()
 def add(task: str, priority: int = 1, done: bool = False):
@@ -70,13 +71,14 @@ options:
 
 ### `CLI` class
 ```python
-CLI(name="myapp", description="Description")
+CLI(name="myapp", description="Description", colour=True)
 ```
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | `str` | `None` | Program name |
 | `description` | `str` | `None` | Program description |
 | `version` | `str` | `None` | Adds `--version` flag |
+| `colour` | `bool` | `True` | Enable/disable coloured output (errors, help text) |
 
 ### Type → CLI Mapping
 | Function Signature | CLI Argument |
@@ -86,13 +88,29 @@ CLI(name="myapp", description="Description")
 | `verbose: bool = False` | `--verbose` / `--no-verbose` |
 | `mode: str \| None = None` | `--mode MODE` |
 
+## 🎨 Colour Support
+
+The `colour` parameter controls coloured output:
+
+- **Error messages** — Displayed in red with helpful hints
+- **Help text** — Syntax highlighting for usage, options, and commands
+- **Respects NO_COLOR** — Automatically disabled when `NO_COLOR` env var is set
+
+```python
+# Disable colours globally
+cli = CLI(name="myapp", colour=False)
+
+# Or via environment variable
+export NO_COLOR=1
+```
+
 ## 📖 Examples
 
 ### Multiple Commands
 ```python
 from arg_kiss import CLI
 
-cli = CLI(name="db", description="Simple database")
+cli = CLI(name="db", description="Simple database", colour=True)
 
 db = {}
 
@@ -207,6 +225,9 @@ Automatic `--name`/`--no-name` mutually exclusive group with `store_true`/`store
 
 ### Async?
 `async def` handlers auto-run with `asyncio.run()`.
+
+### Colours?
+Set `colour=False` to disable, or use `NO_COLOR` environment variable.
 
 ## 📄 License
 
