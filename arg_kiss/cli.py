@@ -12,22 +12,34 @@ from .utils import get_type_from_annotation, is_bool_type
 
 
 class CLI:
-    """Advanced wrapper over argparse for building command-line interfaces."""
+    """
+    Advanced wrapper over argparse for building command-line interfaces with decorator-based command registration.
+
+    Features:
+        - Decorator-based command registration via @cli.command()
+        - Automatic argument inference from function signatures
+        - Support for boolean flags with --flag/--no-flag patterns
+        - Async command support (asyncio)
+        - Command grouping for nested subcommands
+        - Global arguments shared across all commands
+        - Colored output support (optional)
+    """
 
     def __init__(
         self,
         name: str | None = None,
         description: str | None = None,
         version: str | None = None,
-        colour: bool = True,
+        color: bool = True,
     ):
         self.name = name
         self.description = description
         self.version = version
-        self.colour = colour
         self._commands: Dict[str, dict] = {}
 
-        self.parser = argparse.ArgumentParser(prog=name, description=description)
+        self.parser = argparse.ArgumentParser(
+            prog=name, description=description, color=color
+        )
         self.subparsers = self.parser.add_subparsers(dest="_command", title="Commands")
 
         if version:
@@ -38,18 +50,28 @@ class CLI:
         self.parser.add_argument(*flags, **kwargs)
 
     def group(self, name: str, description: str | None = None, **kwargs: Any) -> CLI:
-        """Create a command group."""
+        """
+        Create a command group for organizing related subcommands.
+
+        Args:
+            name: The name of the command group (e.g., "remote", "container").
+            description: Optional description shown in help output.
+            **kwargs: Additional arguments passed to argparse's add_parser().
+
+        Returns:
+            A new CLI instance representing the group.
+        """
         group_parser = self.subparsers.add_parser(
             name, help=description or f"{name} commands", **kwargs
         )
         group_sub = group_parser.add_subparsers(
             dest=f"_group_{name}", title="Subcommands"
         )
+
         sub_cli = CLI.__new__(CLI)
         sub_cli.name = name
         sub_cli.description = description
         sub_cli.version = None
-        sub_cli.colour = self.colour
         sub_cli._commands = self._commands
         sub_cli.parser = group_parser
         sub_cli.subparsers = group_sub
@@ -62,7 +84,9 @@ class CLI:
         arguments: List[Argument] | None = None,
         **parser_kwargs: Any,
     ) -> Callable:
-        """Decorator for creating a command."""
+        """
+        Decorator for creating a CLI command from a function.
+        """
 
         def decorator(func: Callable) -> Callable:
             cmd_name = name or func.__name__.replace("_", "-")
@@ -98,11 +122,30 @@ class CLI:
                         help=param_name,
                     )
                 elif is_bool_type(param):
-                    self._add_bool_argument(parser, param_name, param)
+                    base_flag = param_name.replace("_", "-")
+                    default_val = (
+                        param.default
+                        if param.default is not inspect.Parameter.empty
+                        else False
+                    )
+                    group = parser.add_mutually_exclusive_group()
+                    group.add_argument(
+                        f"--{base_flag}",
+                        action="store_true",
+                        default=default_val,
+                        dest=param_name,
+                        help=f"Enable {param_name}",
+                    )
+                    group.add_argument(
+                        f"--no-{base_flag}",
+                        action="store_false",
+                        default=default_val,
+                        dest=param_name,
+                        help=f"Disable {param_name}",
+                    )
                 else:
-                    flag = f"--{param_name.replace('_', '-')}"
                     parser.add_argument(
-                        flag,
+                        f"--{param_name.replace('_', '-')}",
                         type=get_type_from_annotation(param.annotation, param.default),
                         default=param.default,
                         help=f"{param_name} (default: {param.default})",
@@ -113,7 +156,6 @@ class CLI:
                 if self.name and self.name != self.parser.prog
                 else cmd_name
             )
-
             self._commands[full_name] = {
                 "func": func,
                 "parser": parser,
@@ -123,34 +165,11 @@ class CLI:
 
         return decorator
 
-    def _add_bool_argument(
-        self, parser: argparse.ArgumentParser, param_name: str, param: inspect.Parameter
-    ) -> None:
-        """Add a boolean argument with --name/--no-name flags."""
-        base_flag = param_name.replace("_", "-")
-        default_val = (
-            param.default if param.default is not inspect.Parameter.empty else False
-        )
-        group = parser.add_mutually_exclusive_group()
-        group.add_argument(
-            f"--{base_flag}",
-            action="store_true",
-            default=default_val,
-            dest=param_name,
-            help=f"Enable {param_name}",
-        )
-        group.add_argument(
-            f"--no-{base_flag}",
-            action="store_false",
-            default=default_val,
-            dest=param_name,
-            help=f"Disable {param_name}",
-        )
-
     def run(self, args: List[str] | None = None) -> None:
-        """Parse command-line arguments and execute the appropriate command."""
+        """
+        Parse command-line arguments and execute the appropriate command.
+        """
         args = sys.argv[1:] if args is None else args
-
         namespace = self.parser.parse_args(args)
         namespace_dict = vars(namespace)
 
@@ -171,12 +190,11 @@ class CLI:
 
         func_kwargs = {k: v for k, v in namespace_dict.items() if not k.startswith("_")}
 
-        if command_info["is_async"]:
-            import asyncio
-
-            result = asyncio.run(command_info["func"](**func_kwargs))
-        else:
-            result = command_info["func"](**func_kwargs)
+        result = (
+            command_info["func"](**func_kwargs)
+            if not command_info["is_async"]
+            else __import__("asyncio").run(command_info["func"](**func_kwargs))
+        )
 
         if result is not None:
             sys.stdout.write(result + "\n")

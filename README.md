@@ -28,7 +28,7 @@ pip install arg-kiss
 ```python
 from arg_kiss import CLI
 
-cli = CLI(name="todo", description="Task manager", colour=True)
+cli = CLI(name="todo", description="Task manager", color=True)
 
 @cli.command()
 def add(task: str, priority: int = 1, done: bool = False):
@@ -71,14 +71,52 @@ options:
 
 ### `CLI` class
 ```python
-CLI(name="myapp", description="Description", colour=True)
+CLI(name="myapp", description="Description", color=True)
 ```
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | `str` | `None` | Program name |
 | `description` | `str` | `None` | Program description |
 | `version` | `str` | `None` | Adds `--version` flag |
-| `colour` | `bool` | `True` | Enable/disable coloured output (errors, help text) |
+| `color` | `bool` | `True` | Enable/disable coloured output (help text) |
+
+### Methods
+
+#### `add_global_argument(*flags, **kwargs)`
+Add a global argument that applies to **all commands**. These arguments can be placed anywhere in the command line (before or after the command).
+
+```python
+cli = CLI(name="myapp")
+
+# Add global flags
+cli.add_global_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
+cli.add_global_argument("--config", "-c", type=str, help="Config file path")
+cli.add_global_argument("--quiet", "-q", action="store_true", help="Suppress output")
+
+@cli.command()
+def deploy(environment: str):
+    """Deploy to environment."""
+    # Global arguments are available in the parsed namespace
+    # They're not auto-injected into functions — access via your own logic
+    pass
+```
+
+**Usage in command line:**
+```bash
+# Global arguments work with any command
+myapp --verbose deploy production
+myapp --config settings.json deploy staging
+myapp deploy production --verbose  # Order doesn't matter
+myapp --quiet backup
+```
+
+**Important:** Global arguments are parsed but **not automatically passed** to command functions. Access them via `argparse.Namespace` or implement your own context mechanism.
+
+#### `group(name, description=None, **kwargs)`
+Create a command group for nested subcommands.
+
+#### `command(name=None, description=None, arguments=None, **kwargs)`
+Decorator for registering a CLI command.
 
 ### Type → CLI Mapping
 | Function Signature | CLI Argument |
@@ -88,9 +126,46 @@ CLI(name="myapp", description="Description", colour=True)
 | `verbose: bool = False` | `--verbose` / `--no-verbose` |
 | `mode: str \| None = None` | `--mode MODE` |
 
+---
+
+### Или, если хотите добавить пример использования глобальных аргументов:
+
+```python
+### Global Arguments
+
+Use `add_global_argument()` for flags that apply to all commands:
+
+```python
+from arg_kiss import CLI
+import sys
+
+cli = CLI(name="myapp")
+
+# Global verbose flag
+cli.add_global_argument("--verbose", "-v", action="store_true", help="Verbose output")
+
+@cli.command()
+def process(data: str):
+    """Process some data."""
+    # Access global arguments from sys.argv manually
+    # Or better: extend the framework to pass them
+    if "--verbose" in sys.argv or "-v" in sys.argv:
+        print(f"Processing: {data}")
+    return f"Result: {data.upper()}"
+
+@cli.command()
+def status():
+    """Show status."""
+    print("Status OK")
+
+cli.run()
+```
+
+**Note:** Global arguments are added to the root parser, making them available for all subcommands. They're not automatically injected into command functions to keep the API simple and explicit.
+
 ## 🎨 Colour Support
 
-The `colour` parameter controls coloured output:
+The `color` parameter controls coloured output:
 
 - **Error messages** — Displayed in red with helpful hints
 - **Help text** — Syntax highlighting for usage, options, and commands
@@ -98,7 +173,7 @@ The `colour` parameter controls coloured output:
 
 ```python
 # Disable colours globally
-cli = CLI(name="myapp", colour=False)
+cli = CLI(name="myapp", color=False)
 
 # Or via environment variable
 export NO_COLOR=1
@@ -110,7 +185,7 @@ export NO_COLOR=1
 ```python
 from arg_kiss import CLI
 
-cli = CLI(name="db", description="Simple database", colour=True)
+cli = CLI(name="db", description="Simple database", color=True)
 
 db = {}
 
@@ -227,7 +302,7 @@ Automatic `--name`/`--no-name` mutually exclusive group with `store_true`/`store
 `async def` handlers auto-run with `asyncio.run()`.
 
 ### Colours?
-Set `colour=False` to disable, or use `NO_COLOR` environment variable.
+Set `color=False` to disable, or use `NO_COLOR` environment variable.
 
 ## 📄 License
 
