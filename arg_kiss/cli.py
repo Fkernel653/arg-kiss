@@ -37,9 +37,13 @@ class CLI:
         self.version = version
         self._commands: Dict[str, dict] = {}
 
-        self.parser = argparse.ArgumentParser(
-            prog=name, description=description, color=color
-        )
+        if sys.version_info >= (3, 14):
+            self.parser = argparse.ArgumentParser(
+                prog=name, description=description, color=color
+            )
+        else:
+            self.parser = argparse.ArgumentParser(prog=name, description=description)
+
         self.subparsers = self.parser.add_subparsers(dest="_command", title="Commands")
 
         if version:
