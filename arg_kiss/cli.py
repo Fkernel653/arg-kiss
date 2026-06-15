@@ -202,3 +202,6 @@ class CLI:
 
         if result is not None:
             sys.stdout.write(result + "\n")
+
+    def __call__(self, args: List[str] | None = None) -> None:
+        return self.run(args)

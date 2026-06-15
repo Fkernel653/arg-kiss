@@ -23,7 +23,7 @@ def add(task: str, priority: int = 1, done: bool = False):
     status = "✓" if done else "○"
     print(f"[{status}] {task} (priority: {priority})")
 
-cli.run()
+cli()
 ```
 
 ## 📋 Commands & Features
