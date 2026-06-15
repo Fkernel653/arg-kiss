@@ -98,56 +98,6 @@ cli = CLI(
 NO_COLOR=1 python myapp.py --help
 ```
 
-## 📖 Examples
-
-### CRUD Application
-```python
-from arg_kiss import CLI
-
-cli = CLI(name="db", description="Simple database")
-db = {}
-
-@cli.command()
-def set(key: str, value: str):
-    """Store a value."""
-    db[key] = value
-    print(f"OK: {key} = {value}")
-
-@cli.command()
-def get(key: str):
-    """Retrieve a value."""
-    print(db.get(key, "Not found"))
-
-@cli.command()
-def delete(key: str, force: bool = False):
-    """Delete a key."""
-    if force or key in db:
-        db.pop(key, None)
-        print(f"Deleted: {key}")
-    else:
-        print(f"Not found (use --force)")
-
-cli.run()
-```
-
-### Command Groups (nested subcommands)
-```python
-cli = CLI(name="git", description="Version control")
-
-remote = cli.group("remote", "Manage remotes")
-stash = cli.group("stash", "Stash changes")
-
-@remote.command()
-def add(name: str, url: str):
-    print(f"Added remote {name} -> {url}")
-
-@stash.command()
-def push(message: str = ""):
-    print(f"Stashed: {message or 'WIP'}")
-
-cli.run()
-```
-
 ## 📄 License & Acknowledgments
 
 MIT License — Built with Python standard library:
