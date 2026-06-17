@@ -36,6 +36,19 @@ def fetch(url: str, retries: int = 3):
     print(f"Fetched {url} (retries: {retries})")
 ```
 
+### `@cli.argument()` — Customize argument flags
+
+Use `@cli.argument()` above `@cli.command()` to customize flags, help text, and behavior for individual parameters without needing the `Argument` class.
+
+```python
+@cli.argument("-v", "--verbose", help="Enable verbose output")
+@cli.argument("-r", "--retries", type=int, help="Number of retries")
+@cli.command()
+def fetch(url: str, verbose: bool = False, retries: int = 3):
+    """Download from URL"""
+    print(f"Fetched {url} (retries: {retries})")
+```
+
 ### Type → CLI mapping
 
 | Function signature | CLI argument |
