@@ -13,9 +13,9 @@ Write type-annotated Python functions, get a CLI with argparse's native `--help`
 pip install arg-kiss                    # Python 3.10+
 ```
 ```python
-from arg_kiss import CLI
+from arg_kiss import Argkiss
 
-cli = CLI(name="todo", description="Task manager", color=True)
+cli = Argkiss(name="todo", description="Task manager", color=True)
 
 @cli.command()
 def add(task: str, priority: int = 1, done: bool = False):
@@ -23,7 +23,33 @@ def add(task: str, priority: int = 1, done: bool = False):
     status = "✓" if done else "○"
     print(f"[{status}] {task} (priority: {priority})")
 
+@cli.command()
+def list_all():
+    """Show all tasks."""
+    print("Nothing yet!")
+
 cli()
+```
+
+```bash
+$ python todo.py add "Buy milk" --priority 2
+[○] Buy milk (priority: 2)
+
+$ python todo.py list-all
+Nothing yet!
+
+$ python todo.py --help
+usage: todo [-h] {add,list-all} ...
+
+Task manager
+
+positional arguments:
+  {add,list-all}
+    add           Add a task.
+    list-all      Show all tasks.
+
+options:
+  -h, --help      show this help message and exit
 ```
 
 ## 📋 Commands & Features
@@ -38,15 +64,16 @@ def fetch(url: str, retries: int = 3):
 
 ### `@cli.argument()` — Customize argument flags
 
-Use `@cli.argument()` above `@cli.command()` to customize flags, help text, and behavior for individual parameters without needing the `Argument` class.
+Use `@cli.argument()` above `@cli.command()` to customize flags, help text, and behavior for individual parameters.
 
 ```python
-@cli.argument("-v", "--verbose", help="Enable verbose output")
-@cli.argument("-r", "--retries", type=int, help="Number of retries")
+@cli.argument("-u", "--user", help="Username")
+@cli.argument("-p", "--port", type=int, default=8080, help="Port number")
+@cli.argument("--ssl", action="store_true", help="Enable SSL")
 @cli.command()
-def fetch(url: str, verbose: bool = False, retries: int = 3):
-    """Download from URL"""
-    print(f"Fetched {url} (retries: {retries})")
+def connect(user: str, port: int = 8080, ssl: bool = False):
+    """Connect to server"""
+    print(f"Connecting as {user} on port {port} (SSL: {ssl})")
 ```
 
 ### Type → CLI mapping
@@ -91,7 +118,7 @@ async def fetch(url: str, retries: int = 3):
 ## 🎨 CLI Configuration
 
 ```python
-cli = CLI(
+cli = Argkiss(
     name="myapp",                      # Program name (default: None)
     description="Does amazing things", # Description in help (default: None)
     version="2.0.0",                   # Adds --version flag (default: None)

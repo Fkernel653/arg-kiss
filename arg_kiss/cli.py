@@ -7,11 +7,10 @@ import inspect
 import sys
 from typing import Any, Callable, Dict, List
 
-from .argument import Argument
 from .utils import get_type_from_annotation, is_bool_type
 
 
-class CLI:
+class Argkiss:
     """
     Advanced wrapper over argparse for building command-line interfaces with decorator-based command registration.
 
@@ -46,6 +45,7 @@ class CLI:
         self.description = description
         self.version = version
         self._commands: Dict[str, dict] = {}
+        self._parsers_setup = False
 
         if sys.version_info >= (3, 14):
             self.parser = argparse.ArgumentParser(
@@ -102,7 +102,9 @@ class CLI:
         """
         self.parser.add_argument(*flags, **kwargs)
 
-    def group(self, name: str, description: str | None = None, **kwargs: Any) -> CLI:
+    def group(
+        self, name: str, description: str | None = None, **kwargs: Any
+    ) -> Argkiss:
         """
         Create a command group for organizing related subcommands.
 
@@ -112,7 +114,7 @@ class CLI:
             **kwargs: Additional arguments passed to argparse's add_parser().
 
         Returns:
-            A new CLI instance representing the group.
+            A new Argkiss instance representing the group.
 
         Example:
             >>> remote = cli.group("remote", "Manage remotes")
@@ -127,11 +129,12 @@ class CLI:
             dest=f"_group_{name}", title="Subcommands"
         )
 
-        sub_cli = CLI.__new__(CLI)
+        sub_cli = Argkiss.__new__(Argkiss)
         sub_cli.name = name
         sub_cli.description = description
         sub_cli.version = None
         sub_cli._commands = self._commands
+        sub_cli._parsers_setup = True
         sub_cli.parser = group_parser
         sub_cli.subparsers = group_sub
         return sub_cli
@@ -140,7 +143,6 @@ class CLI:
         self,
         name: str | None = None,
         description: str | None = None,
-        arguments: List[Argument] | None = None,
         **parser_kwargs: Any,
     ) -> Callable:
         """
@@ -154,7 +156,6 @@ class CLI:
         Args:
             name: Custom command name (defaults to function name with underscores replaced by dashes).
             description: Command description (defaults to function docstring).
-            arguments: List of Argument objects for explicit argument definitions.
             **parser_kwargs: Additional arguments passed to argparse's add_parser().
 
         Returns:
@@ -187,23 +188,102 @@ class CLI:
                 **parser_kwargs,
             )
 
-            all_arguments = list(arguments) if arguments else []
+            self._commands[cmd_name] = {
+                "func": func,
+                "parser": parser,
+                "is_async": is_async,
+            }
+            return func
+
+        return decorator
+
+    def _setup_parsers(self):
+        for cmd_name, cmd_info in self._commands.items():
+            func = cmd_info["func"]
+            parser = cmd_info["parser"]
 
             cli_args = getattr(func, "_cli_arguments", None)
+            explicit_dests = set()
+
             if cli_args:
                 for arg_config in cli_args:
-                    flags = arg_config.pop("flags")
-                    all_arguments.append(Argument(*flags, **arg_config))
+                    flags = arg_config["flags"]
+                    kwargs = {k: v for k, v in arg_config.items() if k != "flags"}
 
-            explicit_dests = set()
-            if all_arguments:
-                for arg in all_arguments:
-                    kw = {
-                        k: v
-                        for k, v in vars(arg).items()
-                        if k != "flags" and v is not None
-                    }
-                    explicit_dests.add(parser.add_argument(*arg.flags, **kw).dest)
+                    param_name = None
+                    for flag in flags:
+                        if flag.startswith("--"):
+                            param_name = flag.lstrip("-").replace("-", "_")
+                            break
+                        elif not flag.startswith("-"):
+                            param_name = flag
+                            break
+
+                    if not param_name:
+                        param_name = flags[-1].lstrip("-").replace("-", "_")
+
+                    param = inspect.signature(func).parameters.get(param_name)
+
+                    arg_kwargs = {}
+
+                    is_bool_action = False
+                    if "action" in kwargs:
+                        action = kwargs["action"]
+                        if action in ("store_true", "store_false"):
+                            arg_kwargs["action"] = action
+                            is_bool_action = True
+                            if "default" not in kwargs:
+                                arg_kwargs["default"] = (
+                                    False if action == "store_true" else True
+                                )
+                        elif action == "version":
+                            arg_kwargs["action"] = "version"
+                        elif action == "boolean_optional_action":
+                            arg_kwargs["action"] = argparse.BooleanOptionalAction
+                        else:
+                            arg_kwargs["action"] = action
+                    elif param and is_bool_type(param):
+                        arg_kwargs["action"] = argparse.BooleanOptionalAction
+
+                    if not is_bool_action and "action" not in kwargs:
+                        if "type" in kwargs:
+                            arg_kwargs["type"] = kwargs["type"]
+                        elif param:
+                            arg_kwargs["type"] = get_type_from_annotation(
+                                param.annotation,
+                                param.default
+                                if param.default is not inspect.Parameter.empty
+                                else None,
+                            )
+
+                    if "default" in kwargs:
+                        arg_kwargs["default"] = kwargs["default"]
+                    elif param and param.default is not inspect.Parameter.empty:
+                        arg_kwargs["default"] = param.default
+
+                    if "required" in kwargs:
+                        arg_kwargs["required"] = kwargs["required"]
+                    elif (
+                        param
+                        and param.default is inspect.Parameter.empty
+                        and not is_bool_type(param)
+                        and not is_bool_action
+                    ):
+                        arg_kwargs["required"] = True
+
+                    if "help" in kwargs:
+                        arg_kwargs["help"] = kwargs["help"]
+
+                    if "choices" in kwargs:
+                        arg_kwargs["choices"] = kwargs["choices"]
+
+                    if "dest" in kwargs:
+                        arg_kwargs["dest"] = kwargs["dest"]
+                    else:
+                        arg_kwargs["dest"] = param_name
+
+                    parser.add_argument(*flags, **arg_kwargs)
+                    explicit_dests.add(arg_kwargs.get("dest", param_name))
 
             for param_name, param in inspect.signature(func).parameters.items():
                 if param_name in explicit_dests:
@@ -244,20 +324,6 @@ class CLI:
                         help=f"{param_name} (default: {param.default})",
                     )
 
-            full_name = (
-                f"{self.name}:{cmd_name}"
-                if self.name and self.name != self.parser.prog
-                else cmd_name
-            )
-            self._commands[full_name] = {
-                "func": func,
-                "parser": parser,
-                "is_async": is_async,
-            }
-            return func
-
-        return decorator
-
     def run(self, args: List[str] | None = None) -> None:
         """
         Parse command-line arguments and execute the appropriate command.
@@ -266,6 +332,11 @@ class CLI:
             args: Command-line arguments (defaults to sys.argv[1:]).
         """
         args = sys.argv[1:] if args is None else args
+
+        if not self._parsers_setup:
+            self._setup_parsers()
+            self._parsers_setup = True
+
         namespace = self.parser.parse_args(args)
         namespace_dict = vars(namespace)
 
@@ -303,7 +374,7 @@ class CLI:
             args: Command-line arguments (defaults to sys.argv[1:]).
 
         Example:
-            >>> cli = CLI()
+            >>> cli = Argkiss()
             >>> cli()  # Equivalent to cli.run()
         """
         return self.run(args)
