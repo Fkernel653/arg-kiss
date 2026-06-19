@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import inspect
 import sys
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, Dict, List, cast
 
 from .utils import get_type_from_annotation, is_bool_type
 
@@ -17,7 +17,7 @@ class Argkiss:
     Features:
         - Decorator-based command registration via @cli.command()
         - Automatic argument inference from function signatures
-        - Custom argument flags via @cli.argument() decorator
+        - Custom argument flags via @cli.argument() decorator or `arguments` parameter in @cli.command()
         - Support for boolean flags with --flag/--no-flag patterns
         - Async command support (asyncio)
         - Command grouping for nested subcommands
@@ -82,7 +82,8 @@ class Argkiss:
         """
 
         def decorator(func):
-            if not hasattr(func, "_cli_arguments"):
+            cli_args = getattr(func, "_cli_arguments", None)
+            if cli_args is None:
                 setattr(func, "_cli_arguments", [])
             func._cli_arguments.append({"flags": list(flags), **kwargs})
             return func
@@ -143,6 +144,7 @@ class Argkiss:
         self,
         name: str | None = None,
         description: str | None = None,
+        arguments: List[List] | None = None,
         **parser_kwargs: Any,
     ) -> Callable:
         """
@@ -151,11 +153,14 @@ class Argkiss:
         The decorated function's parameters are automatically converted to
         CLI arguments. Boolean parameters become --flag/--no-flag pairs.
 
-        Can be combined with @cli.argument() to customize individual parameter flags.
+        Can be combined with @cli.argument() or the `arguments` parameter to customize
+        individual parameter flags.
 
         Args:
             name: Custom command name (defaults to function name with underscores replaced by dashes).
             description: Command description (defaults to function docstring).
+            arguments: List of argument definitions in [flags..., {kwargs}] format.
+                      Each item is a list where the last element is a dict of argparse options.
             **parser_kwargs: Additional arguments passed to argparse's add_parser().
 
         Returns:
@@ -174,6 +179,15 @@ class Argkiss:
             >>> def greet(name: str, uppercase: bool = False):
             >>>     msg = f"Hello, {name}!"
             >>>     return msg.upper() if uppercase else msg
+
+        Example with arguments parameter:
+            >>> @cli.command(arguments=[
+            >>>     ["-n", "--name", {"help": "Your name"}],
+            >>>     ["-u", "--uppercase", {"action": "store_true", "help": "Convert to uppercase"}]
+            >>> ])
+            >>> def greet(name: str, uppercase: bool = False):
+            >>>     msg = f"Hello, {name}!"
+            >>>     return msg.upper() if uppercase else msg
         """
 
         def decorator(func: Callable) -> Callable:
@@ -188,6 +202,23 @@ class Argkiss:
                 **parser_kwargs,
             )
 
+            if arguments:
+                for arg_def in arguments:
+                    flags = []
+                    kwargs = {}
+                    for item in arg_def:
+                        if isinstance(item, str):
+                            flags.append(item)
+                        elif isinstance(item, dict):
+                            kwargs.update(item)
+                    if flags:
+                        cli_args = getattr(func, "_cli_arguments", None)
+                        if cli_args is None:
+                            setattr(func, "_cli_arguments", [])
+                        cast(Any, func)._cli_arguments.append(
+                            {"flags": flags, **kwargs}
+                        )
+
             self._commands[cmd_name] = {
                 "func": func,
                 "parser": parser,
@@ -198,7 +229,7 @@ class Argkiss:
         return decorator
 
     def _setup_parsers(self):
-        for cmd_name, cmd_info in self._commands.items():
+        for cmd_info in self._commands.values():
             func = cmd_info["func"]
             parser = cmd_info["parser"]
 
