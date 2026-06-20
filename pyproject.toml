@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arg-kiss"
-version = "0.3.1"
+version = "0.3.2"
 description = "Write type-annotated Python functions, get a CLI with argparse's native `--help` — no magic, no bloat"
 readme = "README.md"
 requires-python = ">=3.10"

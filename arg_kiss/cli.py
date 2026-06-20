@@ -1,4 +1,4 @@
-"""Main CLI class — wraps argparse with decorator-based command registration."""
+"""arg-kiss — Keep It Stupidly Simple CLI builder on top of argparse."""
 
 from __future__ import annotations
 
