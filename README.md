@@ -85,6 +85,28 @@ def connect(user: str, port: int = 8080, ssl: bool = False):
 | `verbose: bool = False` | `--verbose` / `--no-verbose` |
 | `mode: str \| None = None` | `--mode MODE` |
 
+### Boolean flags — Two modes
+
+By default, boolean parameters get `--flag/--no-flag` pairs:
+
+```python
+cli = Argkiss(name="app", boolean_optional=True)  # default
+
+@cli.command()
+def run(verbose: bool = False):
+    """Run with --verbose or --no-verbose"""
+```
+
+To disable and use simple `--flag` with `store_true`/`store_false`:
+
+```python
+cli = Argkiss(name="app", boolean_optional=False)
+
+@cli.command()
+def run(verbose: bool = False):
+    """Run with --verbose to enable"""
+```
+
 ### Command groups
 ```python
 remote = cli.group("remote", "Manage remotes")
@@ -92,6 +114,19 @@ remote = cli.group("remote", "Manage remotes")
 @remote.command()
 def add(name: str, url: str):
     print(f"Added remote {name} -> {url}")
+
+@remote.command()
+def remove(name: str):
+    print(f"Removed remote {name}")
+```
+
+Usage:
+```bash
+$ python app.py remote add origin https://github.com/user/repo
+Added remote origin -> https://github.com/user/repo
+
+$ python app.py remote remove origin
+Removed remote origin
 ```
 
 ### Global arguments (apply to all commands)
@@ -122,16 +157,18 @@ cli = Argkiss(
     name="myapp",                      # Program name (default: None)
     description="Does amazing things", # Description in help (default: None)
     version="2.0.0",                   # Adds --version flag (default: None)
-    color=False,                       # Disable ANSI colours (default: True)
+    color=True,                        # ANSI colours (default: True)
+    boolean_optional=True,             # --flag/--no-flag for bools (default: True)
 )
 ```
 
-| Option | Description |
-|--------|-------------|
-| `name` | Program name in help (default: `None`) |
-| `description` | Description in help (default: `None`) |
-| `version` | Adds `--version` flag (default: `None`) |
-| `color` | Enable/disable coloured output (default: `True`) |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `name` | `str \| None` | `None` | Program name in help |
+| `description` | `str \| None` | `None` | Description in help |
+| `version` | `str \| None` | `None` | Adds `--version` flag |
+| `color` | `bool` | `True` | Enable/disable coloured output |
+| `boolean_optional` | `bool` | `True` | Use `--flag/--no-flag` for bool params |
 
 ### Disable colours via environment
 ```bash

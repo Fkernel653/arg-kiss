@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arg-kiss"
-version = "0.3.2"
+version = "0.3.4"
 description = "Write type-annotated Python functions, get a CLI with argparse's native `--help` — no magic, no bloat"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,8 +12,9 @@ license = "MIT"
 authors = [
     {name = "Fkernel653"}
 ]
-keywords = ["cli", "command-line", "argparse", "framework", "library", "lib", "lightweight", "kiss", "minimalism"]
+keywords = ["cli", "command-line", "argparse", "framework", "library", "libraries", "lib", "lightweight", "mit-license"]
 classifiers = [
+    "License :: OSI Approved :: MIT License",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
@@ -22,6 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Software Development :: User Interfaces",
     "Topic :: Terminals",

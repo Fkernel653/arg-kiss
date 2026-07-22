@@ -5,407 +5,281 @@ from __future__ import annotations
 import argparse
 import inspect
 import sys
-from typing import Any, Callable, Dict, List, cast
+from typing import Any, Callable, Dict, List, Optional
 
-from .utils import get_type_from_annotation, is_bool_type
+from ._types import TypeResolver
+from .argument import Argument, ArgumentBuilder
+from .command import Command, CommandRegistry
 
 
 class Argkiss:
     """
-    Advanced wrapper over argparse for building command-line interfaces with decorator-based command registration.
+    Main CLI application class with decorator-based command registration.
 
-    Features:
-        - Decorator-based command registration via @cli.command()
-        - Automatic argument inference from function signatures
-        - Custom argument flags via @cli.argument() decorator or `arguments` parameter in @cli.command()
-        - Support for boolean flags with --flag/--no-flag patterns
-        - Async command support (asyncio)
-        - Command grouping for nested subcommands
-        - Global arguments shared across all commands
-        - Colored output support (optional)
+    Example:
+        >>> cli = Argkiss(name="myapp", description="My awesome CLI")
+        >>>
+        >>> @cli.command()
+        >>> def greet(name: str, uppercase: bool = False):
+        >>>     return f"Hello, {name}!" if not uppercase else f"HELLO, {name.upper()}!"
+        >>>
+        >>> cli()
     """
 
     def __init__(
         self,
-        name: str | None = None,
-        description: str | None = None,
-        version: str | None = None,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        version: Optional[str] = None,
         color: bool = True,
+        boolean_optional: bool = True,
     ):
-        """
-        Initialize the CLI application.
+        self._name = name
+        self._description = description
+        self._version = version
+        self._color = color
+        self._boolean_optional = boolean_optional
 
-        Args:
-            name: Program name shown in help output.
-            description: Application description shown in help output.
-            version: Version string that enables --version flag.
-            color: Enable ANSI colored output (Python 3.14+ only).
-        """
-        self.name = name
-        self.description = description
-        self.version = version
-        self._commands: Dict[str, dict] = {}
-        self._parsers_setup = False
+        self._registry = CommandRegistry()
+        self._global_args: List[Argument] = []
+        self._parsers_initialized = False
+
+        self._root_parser = self._create_root_parser()
+        self._subparsers = self._root_parser.add_subparsers(
+            dest="_command", title="Commands"
+        )
+
+    def _create_root_parser(self) -> argparse.ArgumentParser:
+        """Create the root argument parser with proper configuration."""
+        parser_kwargs: Dict[str, Any] = {
+            "prog": self._name,
+            "description": self._description,
+        }
 
         if sys.version_info >= (3, 14):
-            self.parser = argparse.ArgumentParser(
-                prog=name, description=description, color=color
-            )
-        else:
-            self.parser = argparse.ArgumentParser(prog=name, description=description)
+            parser_kwargs["color"] = self._color
 
-        self.subparsers = self.parser.add_subparsers(dest="_command", title="Commands")
+        parser = argparse.ArgumentParser(**parser_kwargs)
 
-        if version:
-            self.parser.add_argument("--version", action="version", version=version)
+        if self._version:
+            parser.add_argument("--version", action="version", version=self._version)
 
-    def argument(self, *flags: str, **kwargs: Any) -> Callable:
+        return parser
+
+    def add_global_argument(self, *flags: str, **kwargs) -> None:
         """
-        Decorator to customize argument flags for a command function parameter.
-
-        Use above @cli.command() to override default flag generation and add
-        short flags, custom help text, or other argparse options.
-
-        Args:
-            *flags: Command-line flags (e.g., '-s', '--string')
-            **kwargs: Additional options passed to argparse (help, type, required, choices, action, etc.)
-
-        Returns:
-            Decorator that attaches argument metadata to the function
+        Add a global argument available to all commands.
 
         Example:
-            >>> @cli.argument("-v", "--verbose", help="Enable verbose output")
-            >>> @cli.argument("-r", "--retries", type=int, help="Number of retries")
+            >>> cli.add_global_argument("-v", "--verbose", action="store_true")
+        """
+        argument = ArgumentBuilder().with_flags(*flags).with_options(**kwargs).build()
+
+        self._global_args.append(argument)
+        self._root_parser.add_argument(*flags, **kwargs)
+
+    def argument(self, *flags: str, **kwargs):
+        """
+        Decorator to customize argument flags for a command.
+
+        Example:
+            >>> @cli.argument("-u", "--uppercase", help="Convert to uppercase")
             >>> @cli.command()
-            >>> def fetch(url: str, verbose: bool = False, retries: int = 3):
+            >>> def greet(name: str, uppercase: bool = False):
             >>>     ...
         """
+        argument = ArgumentBuilder().with_flags(*flags).with_options(**kwargs).build()
 
-        def decorator(func):
-            cli_args = getattr(func, "_cli_arguments", None)
-            if cli_args is None:
+        def decorator(func: Callable) -> Callable:
+            if not hasattr(func, "_cli_arguments"):
                 setattr(func, "_cli_arguments", [])
-            func._cli_arguments.append({"flags": list(flags), **kwargs})
+            func._cli_arguments.append(argument)  # type: ignore
             return func
 
         return decorator
 
-    def add_global_argument(self, *flags: str, **kwargs: Any) -> None:
+    def group(self, name: str, description: Optional[str] = None, **kwargs):
         """
-        Add a global argument that applies to all commands.
-
-        Args:
-            *flags: Command-line flags (e.g., '-v', '--verbose')
-            **kwargs: Additional options passed to argparse (help, type, action, etc.)
+        Create a command group for organizing related commands.
 
         Example:
-            >>> cli.add_global_argument('-v', '--verbose', action='store_true', help='Enable verbose mode')
-        """
-        self.parser.add_argument(*flags, **kwargs)
-
-    def group(
-        self, name: str, description: str | None = None, **kwargs: Any
-    ) -> Argkiss:
-        """
-        Create a command group for organizing related subcommands.
-
-        Args:
-            name: The name of the command group (e.g., "remote", "container").
-            description: Optional description shown in help output.
-            **kwargs: Additional arguments passed to argparse's add_parser().
-
-        Returns:
-            A new Argkiss instance representing the group.
-
-        Example:
-            >>> remote = cli.group("remote", "Manage remotes")
+            >>> remote = cli.group("remote", "Manage remote repositories")
             >>> @remote.command()
             >>> def add(name: str, url: str):
             >>>     ...
         """
-        group_parser = self.subparsers.add_parser(
+        group_parser = self._subparsers.add_parser(
             name, help=description or f"{name} commands", **kwargs
         )
-        group_sub = group_parser.add_subparsers(
+        group_subparsers = group_parser.add_subparsers(
             dest=f"_group_{name}", title="Subcommands"
         )
 
         sub_cli = Argkiss.__new__(Argkiss)
-        sub_cli.name = name
-        sub_cli.description = description
-        sub_cli.version = None
-        sub_cli._commands = self._commands
-        sub_cli._parsers_setup = True
-        sub_cli.parser = group_parser
-        sub_cli.subparsers = group_sub
+        sub_cli.__dict__.update(
+            {
+                "_name": name,
+                "_description": description,
+                "_version": None,
+                "_color": self._color,
+                "_boolean_optional": self._boolean_optional,
+                "_registry": self._registry,
+                "_global_args": self._global_args,
+                "_parsers_initialized": True,
+                "_root_parser": group_parser,
+                "_subparsers": group_subparsers,
+            }
+        )
         return sub_cli
 
     def command(
         self,
-        name: str | None = None,
-        description: str | None = None,
-        arguments: List[List] | None = None,
-        **parser_kwargs: Any,
-    ) -> Callable:
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+        **parser_kwargs,
+    ):
         """
-        Decorator for creating a CLI command from a function.
-
-        The decorated function's parameters are automatically converted to
-        CLI arguments. Boolean parameters become --flag/--no-flag pairs.
-
-        Can be combined with @cli.argument() or the `arguments` parameter to customize
-        individual parameter flags.
-
-        Args:
-            name: Custom command name (defaults to function name with underscores replaced by dashes).
-            description: Command description (defaults to function docstring).
-            arguments: List of argument definitions in [flags..., {kwargs}] format.
-                      Each item is a list where the last element is a dict of argparse options.
-            **parser_kwargs: Additional arguments passed to argparse's add_parser().
-
-        Returns:
-            Decorator function that registers the command.
+        Decorator to register a function as a CLI command.
 
         Example:
             >>> @cli.command()
             >>> def greet(name: str, uppercase: bool = False):
-            >>>     \"\"\"Greet a person.\"\"\"
-            >>>     msg = f"Hello, {name}!"
-            >>>     return msg.upper() if uppercase else msg
-
-        Example with @cli.argument():
-            >>> @cli.argument("-u", "--uppercase", help="Convert to uppercase")
-            >>> @cli.command()
-            >>> def greet(name: str, uppercase: bool = False):
-            >>>     msg = f"Hello, {name}!"
-            >>>     return msg.upper() if uppercase else msg
-
-        Example with arguments parameter:
-            >>> @cli.command(arguments=[
-            >>>     ["-n", "--name", {"help": "Your name"}],
-            >>>     ["-u", "--uppercase", {"action": "store_true", "help": "Convert to uppercase"}]
-            >>> ])
-            >>> def greet(name: str, uppercase: bool = False):
-            >>>     msg = f"Hello, {name}!"
-            >>>     return msg.upper() if uppercase else msg
+            >>>     ...
         """
 
         def decorator(func: Callable) -> Callable:
             cmd_name = name or func.__name__.replace("_", "-")
-            cmd_description = description or (func.__doc__ or "").strip()
-            is_async = inspect.iscoroutinefunction(func)
+            cmd_desc = description or (func.__doc__ or "").strip()
 
-            parser = self.subparsers.add_parser(
+            parser = self._subparsers.add_parser(
                 cmd_name,
-                help=cmd_description.split("\n")[0] if cmd_description else None,
-                description=cmd_description,
+                help=cmd_desc.split("\n")[0] if cmd_desc else None,
+                description=cmd_desc,
                 **parser_kwargs,
             )
 
-            if arguments:
-                for arg_def in arguments:
-                    flags = []
-                    kwargs = {}
-                    for item in arg_def:
-                        if isinstance(item, str):
-                            flags.append(item)
-                        elif isinstance(item, dict):
-                            kwargs.update(item)
-                    if flags:
-                        cli_args = getattr(func, "_cli_arguments", None)
-                        if cli_args is None:
-                            setattr(func, "_cli_arguments", [])
-                        cast(Any, func)._cli_arguments.append(
-                            {"flags": flags, **kwargs}
-                        )
+            if hasattr(func, "_cli_arguments"):
+                for arg in func._cli_arguments:  # type: ignore
+                    self._add_argument_to_parser(parser, arg)
 
-            self._commands[cmd_name] = {
-                "func": func,
-                "parser": parser,
-                "is_async": is_async,
-            }
+            command = Command(
+                name=cmd_name,
+                func=func,
+                parser=parser,
+                is_async=inspect.iscoroutinefunction(func),
+            )
+            self._registry.register(command)
             return func
 
         return decorator
 
-    def _setup_parsers(self):
-        for cmd_info in self._commands.values():
-            func = cmd_info["func"]
-            parser = cmd_info["parser"]
+    def _add_argument_to_parser(
+        self, parser: argparse.ArgumentParser, argument: Argument
+    ) -> None:
+        """Add an argument to a parser with proper configuration."""
+        resolver = TypeResolver(
+            argument=argument, boolean_optional=self._boolean_optional
+        )
 
-            cli_args = getattr(func, "_cli_arguments", None)
-            explicit_dests = set()
+        resolved_options = resolver.resolve()
 
-            if cli_args:
-                for arg_config in cli_args:
-                    flags = arg_config["flags"]
-                    kwargs = {k: v for k, v in arg_config.items() if k != "flags"}
+        parser.add_argument(*argument.flags, **resolved_options)
 
-                    param_name = None
-                    for flag in flags:
-                        if flag.startswith("--"):
-                            param_name = flag.lstrip("-").replace("-", "_")
-                            break
-                        elif not flag.startswith("-"):
-                            param_name = flag
-                            break
+    def _initialize_parsers(self) -> None:
+        """Initialize all command parsers with their arguments."""
+        if self._parsers_initialized:
+            return
 
-                    if not param_name:
-                        param_name = flags[-1].lstrip("-").replace("-", "_")
+        for command in self._registry.get_all():
+            self._add_function_arguments(command)
 
-                    param = inspect.signature(func).parameters.get(param_name)
+        self._parsers_initialized = True
 
-                    arg_kwargs = {}
+    def _add_function_arguments(self, command: Command) -> None:
+        """Automatically add arguments from function parameters."""
+        func = command.func
+        parser = command.parser
+        signature = inspect.signature(func)
 
-                    is_bool_action = False
-                    if "action" in kwargs:
-                        action = kwargs["action"]
-                        if action in ("store_true", "store_false"):
-                            arg_kwargs["action"] = action
-                            is_bool_action = True
-                            if "default" not in kwargs:
-                                arg_kwargs["default"] = (
-                                    False if action == "store_true" else True
-                                )
-                        elif action == "version":
-                            arg_kwargs["action"] = "version"
-                        elif action == "boolean_optional_action":
-                            arg_kwargs["action"] = argparse.BooleanOptionalAction
-                        else:
-                            arg_kwargs["action"] = action
-                    elif param and is_bool_type(param):
-                        arg_kwargs["action"] = argparse.BooleanOptionalAction
+        handled_params: set[str] = set()
 
-                    if not is_bool_action and "action" not in kwargs:
-                        if "type" in kwargs:
-                            arg_kwargs["type"] = kwargs["type"]
-                        elif param:
-                            arg_kwargs["type"] = get_type_from_annotation(
-                                param.annotation,
-                                param.default
-                                if param.default is not inspect.Parameter.empty
-                                else None,
-                            )
+        if hasattr(func, "_cli_arguments"):
+            for arg in func._cli_arguments:  # type: ignore
+                param_name = arg.get_dest_name()
+                if param_name:
+                    handled_params.add(param_name)
 
-                    if "default" in kwargs:
-                        arg_kwargs["default"] = kwargs["default"]
-                    elif param and param.default is not inspect.Parameter.empty:
-                        arg_kwargs["default"] = param.default
+        for param_name, param in signature.parameters.items():
+            if param_name in handled_params:
+                continue
 
-                    if "required" in kwargs:
-                        arg_kwargs["required"] = kwargs["required"]
-                    elif (
-                        param
-                        and param.default is inspect.Parameter.empty
-                        and not is_bool_type(param)
-                        and not is_bool_action
-                    ):
-                        arg_kwargs["required"] = True
+            is_global = False
+            for arg in self._global_args:
+                if arg.get_dest_name() == param_name:
+                    is_global = True
+                    break
 
-                    if "help" in kwargs:
-                        arg_kwargs["help"] = kwargs["help"]
+            if is_global:
+                continue
 
-                    if "choices" in kwargs:
-                        arg_kwargs["choices"] = kwargs["choices"]
+            builder = ArgumentBuilder().from_parameter(param_name, param)
 
-                    if "dest" in kwargs:
-                        arg_kwargs["dest"] = kwargs["dest"]
-                    else:
-                        arg_kwargs["dest"] = param_name
+            if self._is_boolean_parameter(param):
+                builder.with_boolean_optional(self._boolean_optional)
 
-                    parser.add_argument(*flags, **arg_kwargs)
-                    explicit_dests.add(arg_kwargs.get("dest", param_name))
+            argument = builder.build()
+            self._add_argument_to_parser(parser, argument)
 
-            for param_name, param in inspect.signature(func).parameters.items():
-                if param_name in explicit_dests:
-                    continue
-                has_default = param.default is not inspect.Parameter.empty
+    def _is_boolean_parameter(self, param: inspect.Parameter) -> bool:
+        """Check if a parameter is boolean."""
+        annotation = param.annotation
 
-                if is_bool_type(param):
-                    base_flag = param_name.replace("_", "-")
+        if annotation is bool:
+            return True
 
-                    if has_default:
-                        default_val = param.default
-                        parser.add_argument(
-                            f"--{base_flag}",
-                            action=argparse.BooleanOptionalAction,
-                            default=default_val,
-                            dest=param_name,
-                            help=f"{param_name} (default: {default_val})",
-                        )
-                    else:
-                        parser.add_argument(
-                            f"--{base_flag}",
-                            action=argparse.BooleanOptionalAction,
-                            required=True,
-                            dest=param_name,
-                            help=f"{param_name} (required)",
-                        )
-                elif not has_default:
-                    parser.add_argument(
-                        param_name,
-                        type=get_type_from_annotation(param.annotation, param.default),
-                        help=param_name,
-                    )
-                else:
-                    parser.add_argument(
-                        f"--{param_name.replace('_', '-')}",
-                        type=get_type_from_annotation(param.annotation, param.default),
-                        default=param.default,
-                        help=f"{param_name} (default: {param.default})",
-                    )
+        if annotation is inspect.Parameter.empty:
+            return isinstance(param.default, bool)
 
-    def run(self, args: List[str] | None = None) -> None:
+        return False
+
+    def run(self, args: Optional[List[str]] = None) -> None:
         """
-        Parse command-line arguments and execute the appropriate command.
+        Parse arguments and execute the appropriate command.
 
         Args:
-            args: Command-line arguments (defaults to sys.argv[1:]).
+            args: Command-line arguments (defaults to sys.argv[1:])
         """
         args = sys.argv[1:] if args is None else args
 
-        if not self._parsers_setup:
-            self._setup_parsers()
-            self._parsers_setup = True
+        self._initialize_parsers()
 
-        namespace = self.parser.parse_args(args)
-        namespace_dict = vars(namespace)
+        namespace = self._root_parser.parse_args(args)
+        ns_dict = vars(namespace)
 
         if namespace._command is None:
-            self.parser.print_help()
+            self._root_parser.print_help()
             return
 
-        command_parts = [namespace._command]
-        command_parts.extend(
-            v for k, v in namespace_dict.items() if k.startswith("_group_") and v
-        )
-        full_command = ":".join(command_parts)
-        command_info = self._commands.get(full_command)
+        cmd_parts = [namespace._command]
+        cmd_parts.extend(v for k, v in ns_dict.items() if k.startswith("_group_") and v)
+        full_cmd = ":".join(cmd_parts)
 
-        if command_info is None:
-            self.parser.print_help()
+        command = self._registry.get(full_cmd)
+        if not command:
+            self._root_parser.print_help()
             return
 
-        func_kwargs = {k: v for k, v in namespace_dict.items() if not k.startswith("_")}
+        kwargs = {k: v for k, v in ns_dict.items() if not k.startswith("_")}
 
         result = (
-            command_info["func"](**func_kwargs)
-            if not command_info["is_async"]
-            else __import__("asyncio").run(command_info["func"](**func_kwargs))
+            __import__("asyncio").run(command.func(**kwargs))
+            if command.is_async
+            else command.func(**kwargs)
         )
 
         if result is not None:
             sys.stdout.write(str(result) + "\n")
 
-    def __call__(self, args: List[str] | None = None) -> None:
-        """
-        Make the CLI instance callable, delegating to run().
-
-        Args:
-            args: Command-line arguments (defaults to sys.argv[1:]).
-
-        Example:
-            >>> cli = Argkiss()
-            >>> cli()  # Equivalent to cli.run()
-        """
-        return self.run(args)
+    def __call__(self, args: Optional[List[str]] = None) -> None:
+        """Make the CLI instance callable."""
+        self.run(args)
